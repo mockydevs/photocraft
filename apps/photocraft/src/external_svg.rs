@@ -225,7 +225,7 @@ mod native {
         }
     }
 
-    /// Open redirects themselves and avoid blocking on a substituted Unix FIFO.
+    /// Prevent redirected opens and avoid blocking on a substituted Unix FIFO.
     fn no_follow(options: &mut OpenOptions) {
         #[cfg(windows)]
         {

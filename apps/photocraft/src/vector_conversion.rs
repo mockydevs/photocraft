@@ -31,6 +31,7 @@ pub(super) fn prepare(editor: &Path, source: &ExternalVectorSource, stop: &Recei
     let mut file = std::fs::OpenOptions::new().write(true).create_new(true).open(&input).map_err(|e| format!("Cannot create vector input: {e}"))?;
     file.write_all(&source.bytes).map_err(|e| format!("Cannot write vector input: {e}"))?;
     drop(file);
+    let commands = conversion_commands(&input, &owned.file)?;
     // MCP's headless roots apply to every thread and file reader, including references in
     // hostile embedded artwork. Ordinary `convert` does not establish those restrictions.
     let responses_path = owned.root.join("Responses.jsonl");
@@ -54,9 +55,7 @@ pub(super) fn prepare(editor: &Path, source: &ExternalVectorSource, stop: &Recei
         .map_err(|e| format!("Cannot start VectorCraft conversion: {e}"))?;
     let result = (|| {
         let mut stdin = child.stdin.take().ok_or("VectorCraft conversion input is unavailable")?;
-        for (id, command, params) in
-            [(1, "document.open", serde_json::json!({"path":input})), (2, "document.export", serde_json::json!({"path":owned.file,"format":"svg"}))]
-        {
+        for (id, command, params) in commands {
             let request = serde_json::json!({"jsonrpc":"2.0","id":id,"method":"tools/call","params":{"name":"run_command","arguments":{"command":command,"params":params}}});
             writeln!(stdin, "{request}").map_err(|e| format!("Cannot send vector conversion request: {e}"))?;
         }
@@ -94,6 +93,13 @@ pub(super) fn prepare(editor: &Path, source: &ExternalVectorSource, stop: &Recei
         let _ = child.wait();
     }
     result.map(|svg| (owned, svg))
+}
+
+/// Build requests only from UTF-8 paths: serializing a non-UTF-8 `Path` inside `json!` panics.
+fn conversion_commands(input: &Path, output: &Path) -> Result<[(u8, &'static str, serde_json::Value); 2], String> {
+    let input = input.to_str().ok_or("The temporary vector input path is not UTF-8")?;
+    let output = output.to_str().ok_or("The temporary vector output path is not UTF-8")?;
+    Ok([(1, "document.open", serde_json::json!({"path": input})), (2, "document.export", serde_json::json!({"path": output, "format": "svg"}))])
 }
 
 /// Keep the original PSD source-pixel frame: PDF points and EPS bounds need not equal the
@@ -143,6 +149,19 @@ fn validate_responses(text: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_temporary_paths_return_errors_instead_of_panicking() {
+        use std::os::unix::ffi::OsStrExt;
+        let invalid = Path::new(std::ffi::OsStr::from_bytes(b"/tmp/vector-\xff"));
+        let valid = Path::new("/tmp/Artwork.svg");
+        assert!(conversion_commands(invalid, valid).is_err());
+        assert!(conversion_commands(valid, invalid).is_err());
+        let commands = conversion_commands(valid, valid).unwrap();
+        assert_eq!(commands[0].2["path"], "/tmp/Artwork.svg");
+        assert_eq!(commands[1].2["format"], "svg");
+    }
 
     #[test]
     fn converted_vectors_use_the_psd_source_pixel_frame() {
