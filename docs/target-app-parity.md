@@ -1,6 +1,6 @@
 # PhotoCraft vs Adobe Photoshop: target-app parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-22 · **Change:** minor (embedded AI/PDF/EPS SVG working-copy editing; `.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (`.atn` import maps 112 events; Free Transform H/V skew fields; stale rows corrected against `main` and the scorecard, estimates unchanged; Photoshop Actions `.atn` load and save; 2026-10-10: Tilt-Shift measurements added; earlier the same day: major, full re-measure against Photoshop 2026 27.11.0; merged `parity-estimate.md` and the roadmap's honest assessment) · **Target:** Adobe Photoshop 2026
 
 The authoritative answer to "how close is PhotoCraft to Photoshop, and how much work is left". The
 one-page summary is [`ROADMAP.md`](../ROADMAP.md); the ranked work list is [`gaps.md`](gaps.md);
@@ -559,25 +559,10 @@ See [method, raw measurements and reproduction](five-algorithm-performance.md).
 7. Later / needs decisions: generative AI backend (#41), scripting compatibility (ExtendScript /
    UXP / .atn), Flathub (#173), Wayland pen pressure (#79).
 
-## Embedded vector editor handoff (2026-10-22)
-
-Extends the external SVG editing slice in PhotoCraft PR #3409 to embedded PDF-compatible AI,
-PDF and EPS in PSD linked-layer tables and Unix desktop launches. A private, bounded VectorCraft
-conversion produces an SVG working copy; only a validated saved edit replaces the source, with
-shared-instance identity, placement, masks and undo preserved. The chooser states the SVG
-conversion limit. Raster/PSB internal editing and browser/automation launch restrictions remain.
-This narrows the smart-object interoperability gap; native AI/EPS format fidelity and clipboard
-reads on non-Windows platforms remain open. Headline estimates and scores are unchanged.
-SVG generic font families resolve to installed fonts when the usual defaults are absent,
-preventing unavailable authored families from silently dropping text. Exact typography still
-requires the authored fonts.
-Implementation and validation details: [vector clipboard](vector-clipboard.md).
-
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-22 | minor | Embedded AI/PDF/EPS editor handoff and Unix support; SVG font fallback; scores and estimates unchanged. |
 | 2026-10-12 | minor | Free Transform options bar H/V skew fields; percentages unchanged |
 | 2026-10-12 | minor | `.atn` import: 112 events mapped (TrueGrit Texture Supply sets play end to end); percentages unchanged |
 | 2026-10-12 | minor | Photoshop Actions `.atn` load and save (90 events mapped both ways); percentages unchanged |

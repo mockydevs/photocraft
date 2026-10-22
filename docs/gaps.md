@@ -49,6 +49,10 @@ what an agent can't finish alone.
   opening in Photoshop" (#2469), a CS2-era smart object unavailable (#2465, fixed 2026-10-12), PSB smart object
   blank (#1764), perspective placed layers flattened (#579), PSB > 4 GB fails on Windows (#375).
   No test opens our exports in a third-party editor (FILE-216-4).
+- **Partial improvement (2026-10-22):** embedded AI/PDF/EPS objects, including nested PSB
+  payloads, support validated SVG working-copy edits through VectorCraft on native Linux.
+  Native-format fidelity, exact missing-font typography and Flatpak launching remain open;
+  [validation and limits](vector-clipboard.md#embedded-vector-validation-2026-10-22).
 - **Impact:** PSD is the format professionals exchange. Beta requires it to be reliable.
 - **Estimate:** 150–250 h. **Human:** opening exports in Photoshop on the owner's Mac (or a
   scripted check there) is the only real oracle.
@@ -251,25 +255,11 @@ what an agent can't finish alone.
   OpenCore (#1859).
 - **Estimate:** 30–60 h. **Human:** signing certificates.
 
-## Embedded vector editor handoff (2026-10-22)
-
-Extends the external SVG editing slice in PhotoCraft PR #3409 to embedded PDF-compatible AI,
-PDF and EPS in PSD linked-layer tables and Unix desktop launches. A private, bounded VectorCraft
-conversion produces an SVG working copy; only a validated saved edit replaces the source, with
-shared-instance identity, placement, masks and undo preserved. The chooser states the SVG
-conversion limit. Raster/PSB internal editing and browser/automation launch restrictions remain.
-This narrows the smart-object interoperability gap; native AI/EPS format fidelity and clipboard
-reads on non-Windows platforms remain open. Headline estimates and scores are unchanged.
-SVG generic font families resolve to installed fonts when the usual defaults are absent,
-preventing unavailable authored families from silently dropping text. Exact typography still
-requires the authored fonts.
-Implementation and validation details: [vector clipboard](vector-clipboard.md).
-
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-22 | minor | Embedded AI/PDF/EPS editor handoff and Unix support; SVG font fallback; scores and estimates unchanged. |
+| 2026-10-22 | minor | Embedded AI/PDF/EPS SVG working-copy editing and Unix handoff; font fallback; [limits and validation](vector-clipboard.md#embedded-vector-validation-2026-10-22). Scores/estimates unchanged. |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |

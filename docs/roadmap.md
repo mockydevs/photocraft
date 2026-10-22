@@ -1,6 +1,6 @@
 # Roadmap
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-22 · **Change:** minor (embedded AI/PDF/EPS SVG working-copy editing; Photomerge implementation status corrected; real-world quality validation remains open) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (Photomerge implementation status corrected; real-world quality validation remains open) · **Target:** Adobe Photoshop 2026
 
 - UI.5: Panels can detach, join other tab groups, split, resize and redock through shared docking transactions. Custom layouts persist with workspaces, respect workspace locking, and retain collapse flags for intact native groups.
 
@@ -109,25 +109,10 @@ Each milestone has a **definition of done (DoD)** and must leave `main` green on
 | **M11** | Automation + formats | MCP server, batch, scripting, remaining formats (JP2, DICOM, DPX…), C2PA | An agent completes 10 scripted edit tasks via MCP |
 | **M12** | Pro parity | CMYK/Lab UI, print, HDR display/merge, Photomerge quality validation, timeline, layer comps, artboards, symmetry, neural filters | `xtask parity` ≥ 90% of Photoshop menu checklist |
 
-## Embedded vector editor handoff (2026-10-22)
-
-Extends the external SVG editing slice in PhotoCraft PR #3409 to embedded PDF-compatible AI,
-PDF and EPS in PSD linked-layer tables and Unix desktop launches. A private, bounded VectorCraft
-conversion produces an SVG working copy; only a validated saved edit replaces the source, with
-shared-instance identity, placement, masks and undo preserved. The chooser states the SVG
-conversion limit. Raster/PSB internal editing and browser/automation launch restrictions remain.
-This narrows the smart-object interoperability gap; native AI/EPS format fidelity and clipboard
-reads on non-Windows platforms remain open. Headline estimates and scores are unchanged.
-SVG generic font families resolve to installed fonts when the usual defaults are absent,
-preventing unavailable authored families from silently dropping text. Exact typography still
-requires the authored fonts.
-Implementation and validation details: [vector clipboard](vector-clipboard.md).
-
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-22 | minor | Embedded AI/PDF/EPS editor handoff and Unix support; SVG font fallback; scores and estimates unchanged. |
 | 2026-10-10 | minor | Photomerge is implemented; real-world quality validation remains open |
 | 2026-10-10 | minor | Alpha gate table (core-workflow gate from the progress-docs standard): passes, stage stays alpha |
 | 2026-10-10 | major | Progress-docs standard: honest assessment and dated measurements moved to `target-app-parity.md`, Affinity notes to `file-format-parity.md`; new Current focus and estimates; `parity.md` renamed `parity-checklist.md` |
