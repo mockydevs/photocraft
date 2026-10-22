@@ -40,6 +40,7 @@ impl<'a> Rd<'a> {
     fn u64(&mut self) -> Option<u64> {
         self.take(8).map(|b| u64::from_be_bytes(b.try_into().unwrap_or([0; 8])))
     }
+    /// Decode a bounded metadata filename without trusting its declared allocation size.
     fn unicode(&mut self) -> Option<String> {
         let n = self.u32()? as usize;
         if n > 32_768 {
@@ -57,6 +58,7 @@ fn parse_item(item: &[u8]) -> Option<LinkedFile> {
     Some(LinkedFile { uuid, file_name, bytes: bytes.to_vec() })
 }
 
+/// Parse one embedded item while borrowing its payload from the original block.
 fn item_data(item: &[u8]) -> Option<(String, String, &[u8])> {
     let mut r = Rd { d: item, p: 0 };
     let kind = r.take(4)?;

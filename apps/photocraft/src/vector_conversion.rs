@@ -9,6 +9,7 @@ use std::process::{Command, Stdio};
 use std::sync::mpsc::Receiver;
 use std::time::{Duration, Instant};
 
+/// Prepare a bounded SVG working copy, converting native vectors inside private MCP roots.
 pub(super) fn prepare(editor: &Path, source: &ExternalVectorSource, stop: &Receiver<()>) -> Result<(OwnedSvg, Vec<u8>), String> {
     if !matches!(source.extension.as_str(), "svg" | "pdf" | "ai" | "eps") {
         return Err("Unsupported embedded vector source type".into());
@@ -123,6 +124,7 @@ fn source_svg(bytes: &[u8], size: Option<(f64, f64)>) -> Result<Vec<u8>, String>
     Ok(result)
 }
 
+/// Require successful replies for both opening the source and exporting the SVG.
 fn validate_responses(text: &str) -> Result<(), String> {
     if text.len() > 1024 * 1024 {
         return Err("VectorCraft conversion responses exceeded the limit".into());

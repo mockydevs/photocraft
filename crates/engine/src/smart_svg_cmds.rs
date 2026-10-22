@@ -37,6 +37,7 @@ fn smart(doc: &Document, id: LayerId) -> Result<&SmartObject> {
     }
 }
 
+/// Borrow embedded bytes from the object or PSD table without following a linked disk path.
 fn embedded<'a>(doc: &'a Document, sm: &'a SmartObject) -> Result<(String, &'a [u8])> {
     let (name, bytes) = match &sm.source {
         SmartSource::Embedded { file_name, bytes } => (file_name.clone(), bytes.as_slice()),
@@ -47,6 +48,7 @@ fn embedded<'a>(doc: &'a Document, sm: &'a SmartObject) -> Result<(String, &'a [
     Ok((name, bytes))
 }
 
+/// Reject unsupported magic bytes and oversized native-vector payloads before handoff.
 fn validate_source(bytes: &[u8]) -> Result<()> {
     if bytes.is_empty() || bytes.len() > crate::vector_paste_cmds::MAX_VECTOR_CLIPBOARD_BYTES || source_extension(bytes).is_none() {
         return Err(EngineError::Other("external editing requires SVG, PDF-compatible AI, PDF or EPS contents within 16 MiB".into()));
@@ -54,6 +56,7 @@ fn validate_source(bytes: &[u8]) -> Result<()> {
     Ok(())
 }
 
+/// Identify supported vector formats from their payload rather than a filename suffix.
 fn source_extension(bytes: &[u8]) -> Option<&'static str> {
     if photocraft_io::svg::is_svg(bytes) {
         Some("svg")
@@ -66,6 +69,7 @@ fn source_extension(bytes: &[u8]) -> Option<&'static str> {
     }
 }
 
+/// Recover the bounded original PSD source-pixel frame for the conversion viewport.
 fn source_size(sm: &SmartObject) -> Option<(f64, f64)> {
     let placed = photocraft_io::smart_map::parse_sold(sm.psd_raw.as_ref()?.as_slice())?;
     photocraft_io::smart_map::stored_size(&placed.descriptor)
@@ -101,6 +105,7 @@ fn check_instances(s: &Session, id: LayerId) -> Result<Vec<LayerId>> {
     Ok(ids)
 }
 
+/// Export a bounded source and optimistic identity entirely in memory.
 fn export(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer(s, p, EXPORT, false)?;
     check_instances(s, id)?;
@@ -167,6 +172,7 @@ fn placed_bounds(sm: &SmartObject, size: Size) -> Result<Rect> {
     Ok(Rect::new(x0.floor() as i32 - padding, y0.floor() as i32 - padding, x1.ceil() as i32 + padding, y1.ceil() as i32 + padding))
 }
 
+/// Validate identity and rendering limits before one undoable shared-content replacement.
 fn update(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer(s, p, UPDATE, true)?;
     let document = p.get("document").and_then(Value::as_u64).ok_or_else(|| bad(UPDATE, "`document` must be an integer document id"))?;

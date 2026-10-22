@@ -5,6 +5,7 @@
 
 use photocraft_ui_egui::{ExternalSvgEditor, ExternalSvgSession};
 
+/// Start an explicit native editor session; artwork cannot supply executable paths.
 pub(crate) fn open(editor: ExternalSvgEditor, source: photocraft_ui_egui::ExternalVectorSource) -> Result<Box<dyn ExternalSvgSession>, String> {
     native::open(editor, source)
 }
@@ -25,6 +26,7 @@ mod native {
     const POLL_INTERVAL: Duration = Duration::from_millis(200);
     const SAVE_SETTLE: Duration = Duration::from_millis(600);
 
+    /// Resolve the chosen editor and move conversion, launch and watching off the UI thread.
     pub(super) fn open(editor: ExternalSvgEditor, source: photocraft_ui_egui::ExternalVectorSource) -> Result<Box<dyn ExternalSvgSession>, String> {
         let executable = resolve_editor(editor)?;
         if source.bytes.is_empty() || source.bytes.len() > MAX_BYTES || !matches!(source.extension.as_str(), "svg" | "pdf" | "ai" | "eps") {
@@ -59,6 +61,7 @@ mod native {
         Ok(Box::new(Session { stop, updates }))
     }
 
+    /// Discover only known installations or an explicitly chosen executable.
     #[cfg(unix)]
     fn resolve_editor(editor: ExternalSvgEditor) -> Result<PathBuf, String> {
         match editor {
@@ -79,6 +82,7 @@ mod native {
         }
     }
 
+    /// Canonicalize an absolute user-selected path and require an executable regular file.
     #[cfg(unix)]
     fn validate_executable(path: &Path) -> Result<PathBuf, String> {
         use std::os::unix::fs::PermissionsExt;
@@ -154,6 +158,7 @@ mod native {
     }
 
     impl OwnedSvg {
+        /// Create a private working file from bounded source bytes.
         pub(super) fn create(svg: &[u8]) -> Result<Self, String> {
             if svg.is_empty() || svg.len() > MAX_BYTES {
                 return Err("The SVG must contain between 1 byte and 16 MiB".into());
@@ -167,6 +172,7 @@ mod native {
             Ok(Self { directory, root, file })
         }
 
+        /// Validate the working directory and capture a regular file identity for save settling.
         pub(super) fn stamp(&self) -> Result<Stamp, String> {
             let directory_metadata = std::fs::symlink_metadata(&self.root).map_err(|e| format!("Cannot inspect the SVG editing directory: {e}"))?;
             if !directory_metadata.is_dir() || is_redirect(&directory_metadata) || self.directory.path().canonicalize().ok().as_ref() != Some(&self.root) {
@@ -177,6 +183,7 @@ mod native {
             Stamp::from_metadata(&metadata)
         }
 
+        /// Read one settled snapshot, retaining byte limits during concurrent file growth.
         pub(super) fn read(&self, expected: &Stamp) -> Result<Vec<u8>, String> {
             if &self.stamp()? != expected {
                 return Err("The SVG is still being saved".into());
@@ -203,6 +210,7 @@ mod native {
             }
             Ok(bytes)
         }
+        /// Write normalized SVG through a checked, no-follow handle before editor launch.
         pub(super) fn overwrite(&self, bytes: &[u8]) -> Result<(), String> {
             if bytes.is_empty() || bytes.len() > MAX_BYTES {
                 return Err("Prepared SVG exceeds the supported byte limit".into());
@@ -217,6 +225,7 @@ mod native {
         }
     }
 
+    /// Open redirects themselves and avoid blocking on a substituted Unix FIFO.
     fn no_follow(options: &mut OpenOptions) {
         #[cfg(windows)]
         {
@@ -264,6 +273,7 @@ mod native {
     }
 
     impl Stamp {
+        /// Reject unsupported file sizes before capturing save time, length and native identity.
         fn from_metadata(metadata: &Metadata) -> Result<Self, String> {
             if metadata.len() == 0 || metadata.len() > MAX_BYTES as u64 {
                 return Err("The edited SVG must contain between 1 byte and 16 MiB".into());
