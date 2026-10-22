@@ -3765,3 +3765,5 @@ curves	Smooth	Wygładź
 @plural	{n} action|{n} actions	{n} operacja|{n} operacje|{n} operacji
 	Auto Add/Delete	Automatyczne dodawanie/usuwanie
 	ICO is limited to 256 × 256 pixels	ICO jest ograniczony do 256 × 256 pikseli
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Zawartość AI/PDF/EPS będzie edytowana jako SVG. Zapisanie zastąpi osadzone źródło; właściwości specyficzne dla formatu mogą się zmienić.

@@ -3912,3 +3912,5 @@ curves	Smooth	Vloeiend maken
 @plural	{n} action|{n} actions	{n} handeling|{n} handelingen
 	Auto Add/Delete	Automatisch toevoegen/verwijderen
 	ICO is limited to 256 × 256 pixels	ICO is beperkt tot 256 × 256 pixels
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	AI/PDF/EPS-inhoud wordt als SVG bewerkt. Opslaan vervangt de ingesloten bron; formaatspecifieke eigenschappen kunnen veranderen.

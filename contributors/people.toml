@@ -154,3 +154,6 @@ sync_github_name = true
 [people.VanTan666]
 display_name = "VanTan"
 sync_github_name = false
+
+[people.mockydevs]
+real_name = "Don Omondi"

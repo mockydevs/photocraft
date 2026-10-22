@@ -3910,3 +3910,5 @@ cameraData	Lens	Lens
 	Color Indicates:	Rengin Gösterdiği:
 	Ink Characteristics	Mürekkep Özellikleri
 	Solidity:	Doluluk:
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	AI/PDF/EPS içeriği SVG olarak düzenlenecek. Kaydetmek gömülü kaynağı değiştirir; biçime özgü özellikler değişebilir.

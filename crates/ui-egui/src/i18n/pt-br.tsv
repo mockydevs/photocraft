@@ -3942,3 +3942,5 @@ layerLabel	No Color	Sem cor
 @plural	{n} action|{n} actions	{n} ação|{n} ações
 	Auto Add/Delete	Adicionar/excluir automaticamente
 	ICO is limited to 256 × 256 pixels	ICO é limitado a 256 × 256 pixels
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	O conteúdo AI/PDF/EPS será editado como SVG. Salvar substitui a origem incorporada; recursos específicos do formato podem mudar.

@@ -20,7 +20,7 @@ fn request(s: &mut Session, id: LayerId, svg: &str) -> Value {
 }
 
 fn source(s: &Session, id: LayerId) -> Vec<u8> {
-    embedded(smart(&s.active().unwrap().doc, id).unwrap()).unwrap().1.as_ref().clone()
+    embedded(&s.active().unwrap().doc, smart(&s.active().unwrap().doc, id).unwrap()).unwrap().1.to_vec()
 }
 
 fn fails_without_edit(s: &mut Session, params: Value) {
@@ -289,4 +289,64 @@ fn bad_params_are_errors_for_both_commands() {
         fails_without_edit(&mut s, p);
     }
     fails_without_edit(&mut s, json!({}));
+}
+
+/// Embedded PSD link-table vectors are exported in memory, then atomically replaced by SVG.
+/// The original payload and shared identities survive undo and native-format save/reload.
+#[test]
+fn embedded_pdf_ai_and_eps_update_shared_instances_without_reading_linked_paths() {
+    for depth in [8, 16, 32] {
+        for (name, bytes) in [("Logo.ai", b"%PDF-1.6\nowned synthetic payload".as_slice()), ("Logo.eps", b"%!PS-Adobe-3.0 EPSF-3.0\n".as_slice())] {
+            let (mut s, id) = session(depth);
+            let duplicate;
+            {
+                let doc = Arc::make_mut(&mut s.active_mut().unwrap().doc);
+                let payload = photocraft_io::linked::encode_linked_file(&photocraft_io::linked::LinkedFile {
+                    uuid: "owned-vector".into(),
+                    file_name: name.into(),
+                    bytes: bytes.to_vec(),
+                });
+                doc.metadata.psd_global_blocks.push((*b"8BIM", *b"lnk2", Arc::new(payload)));
+                let LayerContent::Smart(sm) = &mut doc.layer_mut(id).unwrap().content else { panic!("smart") };
+                sm.source = SmartSource::Linked { path: "owned-vector".into() };
+                let layer = doc.layer(id).unwrap().duplicate();
+                duplicate = layer.id;
+                doc.layers.push(layer);
+            }
+            let before = s.active().unwrap().doc.clone();
+            let exported = s.execute(EXPORT, json!({"layer":id.0})).unwrap();
+            assert_eq!(base64::engine::general_purpose::STANDARD.decode(exported["sourceBase64"].as_str().unwrap()).unwrap(), bytes);
+            assert_eq!(exported["extension"], if name.ends_with("ai") { "ai" } else { "eps" });
+            assert_eq!(s.active().unwrap().doc, before);
+            let params =
+                json!({"document":exported["document"],"layer":id.0,"svg":BLUE,"fingerprint":exported["fingerprint"],"contentsId":exported["contentsId"]});
+            assert_eq!(s.execute(UPDATE, params.clone()).unwrap()["updated"], true);
+            for id in [id, duplicate] {
+                assert_eq!(source(&s, id), BLUE.as_bytes());
+            }
+            let after = s.active().unwrap().doc.clone();
+            assert!(s.undo());
+            assert_eq!(s.active().unwrap().doc, before);
+            assert!(s.redo());
+            assert_eq!(s.active().unwrap().doc, after);
+            fails_without_edit(&mut s, params); // stale first-save fingerprint
+            let serialized = photocraft_format::save_to_bytes(&after, &Default::default()).unwrap();
+            assert_eq!(photocraft_format::load_from_bytes(&serialized).unwrap(), *after);
+        }
+    }
+}
+
+#[test]
+fn vector_handoff_never_reads_a_linked_disk_path_or_accepts_disguised_raster() {
+    let (mut s, id) = session(8);
+    for source in
+        [SmartSource::Linked { path: "/dev/zero".into() }, SmartSource::Embedded { file_name: "Logo.ai".into(), bytes: Arc::new(b"not a vector".to_vec()) }]
+    {
+        let doc = Arc::make_mut(&mut s.active_mut().unwrap().doc);
+        let LayerContent::Smart(sm) = &mut doc.layer_mut(id).unwrap().content else { panic!("smart") };
+        sm.source = source;
+        let before = s.active().unwrap().doc.clone();
+        assert!(s.execute(EXPORT, json!({"layer":id.0})).is_err());
+        assert_eq!(s.active().unwrap().doc, before);
+    }
 }

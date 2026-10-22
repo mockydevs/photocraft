@@ -1,6 +1,7 @@
 //! Memory-only SVG smart-object handoff. The shell owns editor selection and temporary files;
 //! commands own optimistic concurrency, bounded rendering and one shared-content transaction.
 
+use base64::Engine as _;
 use std::sync::Arc;
 
 use photocraft_doc::{Document, Layer, LayerContent, LayerId, SmartContentsId, SmartObject, SmartSource};
@@ -36,14 +37,39 @@ fn smart(doc: &Document, id: LayerId) -> Result<&SmartObject> {
     }
 }
 
-fn embedded(sm: &SmartObject) -> Result<(&str, &Arc<Vec<u8>>)> {
-    let SmartSource::Embedded { file_name, bytes } = &sm.source else {
-        return Err(EngineError::Other("external SVG editing requires embedded SVG contents".into()));
+fn embedded<'a>(doc: &'a Document, sm: &'a SmartObject) -> Result<(String, &'a [u8])> {
+    let (name, bytes) = match &sm.source {
+        SmartSource::Embedded { file_name, bytes } => (file_name.clone(), bytes.as_slice()),
+        SmartSource::Linked { path } => photocraft_io::linked::embedded_payload(&doc.metadata, path)
+            .ok_or_else(|| EngineError::Other("external editing requires embedded vector contents".into()))?,
     };
-    if bytes.is_empty() || bytes.len() > crate::vector_paste_cmds::MAX_VECTOR_CLIPBOARD_BYTES || !photocraft_io::svg::is_svg(bytes) {
-        return Err(EngineError::Other("external SVG editing requires SVG contents within 16 MiB".into()));
+    validate_source(bytes)?;
+    Ok((name, bytes))
+}
+
+fn validate_source(bytes: &[u8]) -> Result<()> {
+    if bytes.is_empty() || bytes.len() > crate::vector_paste_cmds::MAX_VECTOR_CLIPBOARD_BYTES || source_extension(bytes).is_none() {
+        return Err(EngineError::Other("external editing requires SVG, PDF-compatible AI, PDF or EPS contents within 16 MiB".into()));
     }
-    Ok((file_name, bytes))
+    Ok(())
+}
+
+fn source_extension(bytes: &[u8]) -> Option<&'static str> {
+    if photocraft_io::svg::is_svg(bytes) {
+        Some("svg")
+    } else if bytes.starts_with(b"%PDF-") {
+        Some("pdf")
+    } else if bytes.starts_with(b"%!PS-Adobe-") || bytes.starts_with(&[0xc5, 0xd0, 0xd3, 0xc6]) {
+        Some("eps")
+    } else {
+        None
+    }
+}
+
+fn source_size(sm: &SmartObject) -> Option<(f64, f64)> {
+    let placed = photocraft_io::smart_map::parse_sold(sm.psd_raw.as_ref()?.as_slice())?;
+    photocraft_io::smart_map::stored_size(&placed.descriptor)
+        .filter(|(w, h)| w.is_finite() && h.is_finite() && *w <= 16384.0 && *h <= 16384.0 && w * h <= MAX_PIXELS as f64)
 }
 
 fn enabled(s: &Session) -> std::result::Result<(), String> {
@@ -70,7 +96,7 @@ fn check_instances(s: &Session, id: LayerId) -> Result<Vec<LayerId>> {
         if locks.all || locks.pixels {
             return Err(EngineError::Other("a shared smart-object instance is locked".into()));
         }
-        embedded(smart(doc, *id)?)?;
+        embedded(doc, smart(doc, *id)?)?;
     }
     Ok(ids)
 }
@@ -78,12 +104,23 @@ fn check_instances(s: &Session, id: LayerId) -> Result<Vec<LayerId>> {
 fn export(s: &mut Session, p: &Value) -> Result<Value> {
     let id = layer(s, p, EXPORT, false)?;
     check_instances(s, id)?;
-    let sm = smart(&s.active().ok_or(EngineError::NoDocument)?.doc, id)?;
-    let (_, bytes) = embedded(sm)?;
-    let svg = std::str::from_utf8(bytes).map_err(|_| bad(EXPORT, "SVG contents must be UTF-8"))?;
-    Ok(
-        json!({"document":s.active().ok_or(EngineError::NoDocument)?.doc.id.0,"svg":svg,"fingerprint":blake3::hash(bytes).to_hex().to_string(),"contentsId":sm.contents_id.0}),
-    )
+    let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
+    let sm = smart(doc, id)?;
+    let (name, bytes) = embedded(doc, sm)?;
+    let mut extension = source_extension(bytes).ok_or_else(|| bad(EXPORT, "unsupported vector source"))?;
+    if extension != "svg" && name.to_ascii_lowercase().ends_with(".ai") {
+        extension = "ai";
+    }
+    if extension != "svg" && sm.psd_raw.is_some() && source_size(sm).is_none() {
+        return Err(bad(EXPORT, "the embedded vector has no supported PSD source-pixel frame"));
+    }
+    let mut result = json!({"document":doc.id.0,"fingerprint":blake3::hash(bytes).to_hex().to_string(),"contentsId":sm.contents_id.0,"extension":extension,"sourceSize":source_size(sm)});
+    if extension == "svg" {
+        result["svg"] = json!(std::str::from_utf8(bytes).map_err(|_| bad(EXPORT, "SVG contents must be UTF-8"))?);
+    } else {
+        result["sourceBase64"] = json!(base64::engine::general_purpose::STANDARD.encode(bytes));
+    }
+    Ok(result)
 }
 
 /// Mirror the renderer's mesh vertices before it allocates destination tiles. Without a warp,
@@ -146,17 +183,17 @@ fn update(s: &mut Session, p: &Value) -> Result<Value> {
     let ids = check_instances(s, id)?;
     let doc = &s.active().ok_or(EngineError::NoDocument)?.doc;
     let target = smart(doc, id)?;
-    let (name, original) = embedded(target)?;
+    let (name, original) = embedded(doc, target)?;
     if target.contents_id != contents || !blake3::hash(original).to_hex().as_str().eq_ignore_ascii_case(expected) {
         return Err(bad(UPDATE, "smart-object contents changed since external editing started"));
     }
     for instance in &ids {
-        let (_, bytes) = embedded(smart(doc, *instance)?)?;
+        let (_, bytes) = embedded(doc, smart(doc, *instance)?)?;
         if !blake3::hash(bytes).to_hex().as_str().eq_ignore_ascii_case(expected) {
             return Err(bad(UPDATE, "shared smart-object instances have conflicting contents"));
         }
     }
-    if original.as_slice() == svg.as_bytes() {
+    if original == svg.as_bytes() {
         return Ok(json!({"layer":id.0,"contentsId":contents.0,"fingerprint":expected,"updated":false}));
     }
     // Persisted smart filters are executable input too. A source replacement replays them
@@ -178,13 +215,16 @@ fn update(s: &mut Session, p: &Value) -> Result<Value> {
     }
     // Save-back can intentionally remove the last drawable object. Use the same bounded
     // importer as clipboard preparation without its paste-only nonempty-layer requirement.
-    let imported = photocraft_io::svg::import_svg_bounded(name, svg.as_bytes(), MAX_PIXELS)
+    let imported = photocraft_io::svg::import_svg_bounded(&name, svg.as_bytes(), MAX_PIXELS)
         .map_err(|error| bad(UPDATE, format!("can't import edited SVG contents: {error}")))?;
     let size = imported.document.size;
     if size.area() > MAX_PIXELS {
         return Err(bad(UPDATE, "SVG contents exceed the 24 million pixel limit"));
     }
-    let source = SmartSource::Embedded { file_name: name.to_string(), bytes: Arc::new(svg.as_bytes().to_vec()) };
+    let source = SmartSource::Embedded {
+        file_name: if photocraft_io::svg::is_svg(original) { name } else { "Artwork.svg".into() },
+        bytes: Arc::new(svg.as_bytes().to_vec()),
+    };
     let mut replacements: Vec<Layer> = Vec::with_capacity(ids.len());
     let mut pixels = 0u64;
     for instance in ids {
@@ -223,7 +263,7 @@ pub fn specs() -> Vec<CommandSpec> {
             label: "Export SVG Contents",
             menu: &[],
             shortcut: None,
-            params: r#"{"layer":id?} → {document,svg,fingerprint,contentsId}"#,
+            params: r#"{"layer":id?} → {document,svg?|sourceBase64?,extension,sourceSize,fingerprint,contentsId}"#,
             enabled,
             run: export,
             journal: false,

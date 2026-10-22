@@ -2779,3 +2779,5 @@ curves	Smooth	平滑
 @plural	{n} action|{n} actions	{n} 个动作
 	Auto Add/Delete	自动添加/删除
 	ICO is limited to 256 × 256 pixels	ICO 最大为 256 × 256 像素
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	AI/PDF/EPS 内容将以 SVG 格式编辑。保存会替换嵌入的源文件；格式特有的功能可能会发生变化。

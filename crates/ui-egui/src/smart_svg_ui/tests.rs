@@ -26,7 +26,7 @@ fn fixture() -> (PhotocraftApp, Saves, Calls) {
     let (queue, launched) = (saves.clone(), calls.clone());
     let services = Services {
         open_external_svg: Some(Box::new(move |editor, bytes| {
-            assert_eq!(&**bytes, SVG.as_bytes());
+            assert_eq!(&*bytes.bytes, SVG.as_bytes());
             launched.borrow_mut().push(editor);
             Ok(Box::new(TestSession(queue.clone())))
         })),
@@ -558,4 +558,73 @@ fn capture_smart_svg_visual_fixtures() {
         harness.run_steps(5);
         harness.render().unwrap().save(directory.join(format!("photocraft-smart-svg-editor-{}-en.png", theme.id()))).unwrap();
     }
+}
+
+/// An AI payload in the PSD link table must reach explicit editor selection without becoming
+/// a filesystem path. A saved SVG replaces it through the normal optimistic transaction.
+#[test]
+fn embedded_ai_link_table_handoff_preserves_source_until_saved_and_undo_restores_it() {
+    let (mut app, saves, calls) = fixture();
+    let id = app.session.active().unwrap().active_layer.unwrap();
+    let original = b"%PDF-1.6\nsynthetic vector".to_vec();
+    {
+        let doc = Arc::make_mut(&mut app.session.active_mut().unwrap().doc);
+        let payload = photocraft_io::linked::encode_linked_file(&photocraft_io::linked::LinkedFile {
+            uuid: "embedded-ai".into(),
+            file_name: "Logo.ai".into(),
+            bytes: original.clone(),
+        });
+        doc.metadata.psd_global_blocks.push((*b"8BIM", *b"lnk2", Arc::new(payload)));
+        let LayerContent::Smart(sm) = &mut doc.layer_mut(id).unwrap().content else { panic!("smart") };
+        sm.source = SmartSource::Linked { path: "embedded-ai".into() };
+    }
+    let before = app.session.active().unwrap().doc.clone();
+    let queue = saves.clone();
+    app.services.open_external_svg = Some(Box::new(move |editor, source| {
+        assert_eq!(editor, ExternalSvgEditor::VectorCraft);
+        assert_eq!(*source.bytes, original);
+        assert_eq!(source.extension, "ai");
+        Ok(Box::new(TestSession(queue.clone())))
+    }));
+    open(&mut app);
+    assert!(calls.borrow().is_empty());
+    confirm(&mut app).unwrap();
+    assert_eq!(app.session.active().unwrap().doc, before);
+    saves.borrow_mut().push_back(Ok(SVG.as_bytes().to_vec()));
+    poll(&mut app, &egui::Context::default());
+    let layer = app.session.active().unwrap().doc.layer(id).unwrap();
+    assert!(
+        matches!(&layer.content,LayerContent::Smart(sm) if matches!(&sm.source,SmartSource::Embedded {file_name,bytes} if file_name=="Artwork.svg" && bytes.as_slice()==SVG.as_bytes()))
+    );
+    assert!(app.session.undo());
+    assert_eq!(app.session.active().unwrap().doc, before);
+}
+
+/// Optional screenshot uses authored bytes and mock services, never private artwork or an editor.
+#[test]
+fn capture_embedded_vector_conversion_prompt() {
+    let Some(directory) = std::env::var_os("CRAFT_SMART_SVG_FIXTURES").map(std::path::PathBuf::from) else { return };
+    std::fs::create_dir_all(&directory).unwrap();
+    let (mut app, _, _) = fixture();
+    let state = app.session.active_mut().unwrap();
+    let id = state.active_layer.unwrap();
+    let LayerContent::Smart(sm) = &mut Arc::make_mut(&mut state.doc).layer_mut(id).unwrap().content else { panic!("smart") };
+    sm.source = SmartSource::Embedded { file_name: "Authored.ai".into(), bytes: Arc::new(b"%PDF-1.6\nsynthetic vector prompt".to_vec()) };
+    open(&mut app);
+    let mut ready = false;
+    let lang = crate::i18n::lang_from_tag("en").unwrap();
+    let mut harness = egui_kittest::Harness::builder().with_size(egui::vec2(900.0, 620.0)).wgpu().build_ui_state(
+        move |ui, app: &mut PhotocraftApp| {
+            let _language = crate::i18n::language_scope(lang);
+            if !ready {
+                PhotocraftApp::setup_context(ui.ctx(), crate::theme::ThemeKind::Pro);
+                ready = true;
+                return;
+            }
+            show(app, ui.ctx());
+        },
+        app,
+    );
+    harness.run_steps(5);
+    harness.render().unwrap().save(directory.join("photocraft-embedded-vector-editor-en.png")).unwrap();
 }

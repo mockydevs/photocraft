@@ -3850,3 +3850,5 @@ curves	Smooth	Εξομάλυνση
 @plural	{n} action|{n} actions	{n} ενέργεια|{n} ενέργειες
 	Auto Add/Delete	Αυτόματη προσθήκη/διαγραφή
 	ICO is limited to 256 × 256 pixels	Το ICO περιορίζεται σε 256 × 256 εικονοστοιχεία
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Το περιεχόμενο AI/PDF/EPS θα υποστεί επεξεργασία ως SVG. Η αποθήκευση αντικαθιστά την ενσωματωμένη πηγή· οι ιδιότητες του αρχικού τύπου αρχείου μπορεί να αλλάξουν.

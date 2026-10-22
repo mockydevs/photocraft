@@ -38,7 +38,8 @@ are retained; drawing-tool defaults do not replace them. Properties such as fill
 dimensions edit the native shape. Primitive-specific controls require matching primitive
 metadata: an arbitrary imported path does not automatically become a rectangle or polygon.
 
-On desktop, Layer > Smart Objects > Edit Contents offers external editing for embedded SVG.
+On desktop, Layer > Smart Objects > Edit Contents offers external editing for embedded SVG,
+PDF-compatible AI, PDF and EPS, including payloads retained in PSD linked-layer tables.
 Choose VectorCraft, Illustrator, or an executable through the native file picker. PhotoCraft
 passes a temporary SVG working copy directly to that executable, without a command shell.
 The editor must save changes back to the same SVG file. Stable saves are validated and update
@@ -48,17 +49,37 @@ Malformed saves and conflicting source changes leave the current contents intact
 
 Ordinary SVG clipboard data does not reliably identify its producing application. The editor
 choice remains explicit; an SVG copy is not a link to the producer's original native project.
-External editing and known-editor discovery currently support Windows. Other platforms keep
-the internal editor. The browser and automation do not launch external editors.
+External editing supports Windows and Unix desktops. Linux discovery checks normal VectorCraft
+install locations and the user Flatpak deployment; Other application selects an explicit local
+executable. No executable is read from artwork metadata or searched for in the document folder.
+The browser and automation do not launch external editors. Native Linux acceptance does not
+establish Flatpak-to-Flatpak launching: sandboxed packages may require separate portal or
+packaging integration; no sandbox permissions are broadened here.
 WebAssembly builds omit the external-editor dialog and session polling; internal editing
 and the memory-only SVG commands remain available.
 
 PhotoCraft's internal editor remains available. Internal Edit Contents uses a PhotoCraft
 document and saves its edited source as `.pcraft`; external SVG editing preserves SVG source.
-Non-SVG smart objects retain their existing internal editing behavior.
+Raster and PhotoCraft/PSD/PSB smart objects retain their existing internal editing behavior.
+
+AI/PDF/EPS editing requires `vectorcraft-cli` beside the selected VectorCraft executable.
+A cancellable background process converts the bounded embedded source to an SVG working copy
+through VectorCraft’s headless MCP API, confined to a private temporary directory for both reads
+and writes. Both open and export must succeed. Conversion times out after 60 seconds. The PSD’s
+stored source-pixel frame is retained even when PDF points differ, preserving placement and warp
+coordinates. Missing or unsupported stored frames fail without changing the original object.
+
+The editor chooser explains that saving replaces the embedded source with SVG. AI/EPS-specific
+features can change during conversion; this is not lossless native AI/EPS editing. Original bytes
+remain unchanged until the first valid saved edit and can be restored with Undo. The working copy
+is not a link to a file on the user’s drive. Windows and Unix file watchers reject symlinks and
+nonregular files; Unix opens are also nonblocking and no-follow to prevent substituted FIFOs or
+links from hanging the watcher or reading an unrelated target.
 
 The memory-only `layer.smartObjects.exportSvg` and `layer.smartObjects.updateSvg` commands
-support source handoff and save-back. Save-back validates document, layer, shared contents ID
+support source handoff and save-back. Export returns `svg` for SVG sources or bounded
+`sourceBase64` plus `extension` and optional `sourceSize` for other embedded vectors; it never
+follows a linked path on disk. Save-back validates document, layer, shared contents ID
 and expected source fingerprint before changing the document. These commands do not accept
 filesystem paths or launch programs.
 
@@ -94,3 +115,24 @@ This first implementation supports Windows SVG. PDF clipboard representations, n
 clipboard reads on macOS/Linux/web, Illustrator-specific private formats, and editable SVG
 text are follow-up work. Synthetic clipboard and rendering tests do not establish compatibility
 with every installed producer version.
+
+## Embedded-vector validation (2026-10-22)
+
+The extension is based on the external-SVG work in PR #3409. Local acceptance used eight
+contributor-owned logo PSDs, following each mockup’s nested PSB into its embedded AI vector.
+A real VectorCraft edit and Save produced a visible PhotoCraft change; child and parent Undo/Redo
+and PSD export/reopen preserved the edited vector. Input hashes were unchanged. Those files,
+screenshots and the private acceptance harness are not shipped. Public regression tests use
+authored sources and existing permissively licensed font data.
+
+Missing fonts can change typography. VectorCraft reports them in its existing Missing Fonts
+dialog. PhotoCraft’s SVG renderer now maps unavailable generic defaults to actual installed
+families, so a missing authored font falls back instead of dropping the text entirely. Install
+the authored fonts for matching typography; fallback rendering is not a fidelity guarantee.
+
+Browser builds retain internal editing. Clipboard discovery on non-Windows platforms and
+lossless native AI/EPS format preservation remain outside this extension.
+
+![Embedded-vector editor chooser with conversion warning](images/embedded-vector-editor-en.png)
+
+Offscreen dialog capture with authored bytes and mock editor services; no private artwork.

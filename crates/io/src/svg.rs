@@ -61,9 +61,39 @@ fn fonts() -> Arc<usvg::fontdb::Database> {
         }
         #[cfg(not(target_arch = "wasm32"))]
         db.load_system_fonts();
+        configure_generic_fonts(&mut db);
         Arc::new(db)
     })
     .clone()
+}
+
+/// fontdb's defaults name common Windows fonts. If those families aren't installed,
+/// usvg's missing-family fallback resolves to nothing and drops otherwise valid SVG text.
+/// Keep existing mappings; fill only missing generics with a family actually in this database.
+fn configure_generic_fonts(db: &mut usvg::fontdb::Database) {
+    use usvg::fontdb::{Family, Query};
+    for (generic, candidates) in [
+        (Family::Serif, &["Noto Serif", "DejaVu Serif", "Liberation Serif", "Inter"][..]),
+        (Family::SansSerif, &["Noto Sans", "DejaVu Sans", "Liberation Sans", "Inter"][..]),
+        (Family::Monospace, &["Noto Sans Mono", "DejaVu Sans Mono", "Liberation Mono", "JetBrains Mono"][..]),
+    ] {
+        if db.query(&Query { families: &[generic], ..Default::default() }).is_some() {
+            continue;
+        }
+        let family = candidates
+            .iter()
+            .find(|name| db.query(&Query { families: &[Family::Name(name)], ..Default::default() }).is_some())
+            .map(|name| (*name).to_string())
+            .or_else(|| db.faces().find_map(|face| face.families.first().map(|(name, _)| name.clone())));
+        if let Some(family) = family {
+            match generic {
+                Family::Serif => db.set_serif_family(family),
+                Family::SansSerif => db.set_sans_serif_family(family),
+                Family::Monospace => db.set_monospace_family(family),
+                _ => {}
+            }
+        }
+    }
 }
 
 /// Parse options for an untrusted drawing. `<image href>` resolves only `data:` URLs: a file path
@@ -1208,5 +1238,24 @@ mod tests {
         assert!(import_svg_bounded("bounded", bytes, 64).is_ok());
         let oversized = br#"<svg xmlns="http://www.w3.org/2000/svg" width="5000" height="5000"><rect width="5000" height="5000"/></svg>"#;
         assert!(import_svg_bounded("bounded", oversized, u64::MAX).unwrap_err().to_string().contains("cache budget"));
+    }
+    /// A one-font database reproduces Linux hosts without Times New Roman. A missing authored
+    /// family must still produce text geometry; it must not silently disappear on save-back.
+    #[test]
+    fn missing_svg_font_uses_an_available_generic_instead_of_dropping_text() {
+        fn inter() -> Arc<usvg::fontdb::Database> {
+            let mut db = usvg::fontdb::Database::new();
+            db.load_font_data(include_bytes!("../../../assets/fonts/Inter-Regular.ttf").to_vec());
+            configure_generic_fonts(&mut db);
+            Arc::new(db)
+        }
+        let svg=br#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="30"><text x="2" y="24" font-size="20" font-family="Unavailable Authored Font">LOGO</text></svg>"#;
+        let parsed = parse_with(svg, inter).unwrap();
+        assert!(!parsed.fontless_text);
+        assert!(!parsed.tree.root().children().is_empty(), "missing-family fallback must preserve text geometry");
+        let mut db = (*inter()).clone();
+        let before = db.query(&usvg::fontdb::Query { families: &[usvg::fontdb::Family::Serif], ..Default::default() });
+        configure_generic_fonts(&mut db);
+        assert_eq!(db.query(&usvg::fontdb::Query { families: &[usvg::fontdb::Family::Serif], ..Default::default() }), before);
     }
 }

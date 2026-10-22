@@ -3760,3 +3760,5 @@ navigator	Zoom	Zvětšení
 @plural	{n} action|{n} actions	{n} akce|{n} akce|{n} akcí
 	Auto Add/Delete	Automaticky přidat/odstranit
 	ICO is limited to 256 × 256 pixels	ICO je omezen na 256 × 256 pixelů
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Obsah AI/PDF/EPS se bude upravovat jako SVG. Uložení nahradí vložený zdroj; vlastnosti specifické pro formát se mohou změnit.

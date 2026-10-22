@@ -4254,3 +4254,5 @@ shape	Appearance	Izgled
 	Color Indicates:	Boja označava:
 	Ink Characteristics	Karakteristike mastila
 	Solidity:	Punoća:
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	AI/PDF/EPS садржај ће се уређивати као SVG. Чување замењује уграђени извор; својства специфична за формат могу се променити.

@@ -377,7 +377,15 @@ pub trait ExternalSvgSession {
     fn poll(&mut self) -> Option<Result<Vec<u8>, String>>;
 }
 
-pub type OpenExternalSvgFn = Box<dyn FnMut(ExternalSvgEditor, std::sync::Arc<Vec<u8>>) -> Result<Box<dyn ExternalSvgSession>, String>>;
+/// An immutable embedded source. The shell converts non-SVG inputs in its owned working directory.
+#[derive(Clone)]
+pub struct ExternalVectorSource {
+    pub bytes: std::sync::Arc<Vec<u8>>,
+    pub extension: String,
+    pub size: Option<(f64, f64)>,
+}
+
+pub type OpenExternalSvgFn = Box<dyn FnMut(ExternalSvgEditor, ExternalVectorSource) -> Result<Box<dyn ExternalSvgSession>, String>>;
 /// Shared queue of (file name, bytes) delivered asynchronously.
 pub type Inbox = std::sync::Arc<std::sync::Mutex<Vec<(String, Vec<u8>)>>>;
 /// Read the saved preferences text (`None` when there is none yet).

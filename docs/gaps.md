@@ -1,6 +1,6 @@
 # Where PhotoCraft falls short of Photoshop
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-13 · **Change:** minor (G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-22 · **Change:** minor (embedded AI/PDF/EPS SVG working-copy editing; G4: minimum field interaction, #3825 partial; G1: CMYK Invert, Posterize and Threshold on the inks, 16-bit Lab Invert; Photoshop-oracle floor 145/258; G11: `.atn` import maps 112 events: Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, nudges in points, Bitmap mode; G5: Free Transform H/V skew fields; G9: toolbar tool shortcut editing; refreshed against main: G2, G5, G7, G9, G10, G13, G14, G17 items that landed; G10: DPX read and write, #1049; G4: checkbox-only Brush Settings rows; G11: Load/Save Actions `.atn` landed, AUTO-219-2 partial; G5: hold-a-key spring-loaded tools landed, #2672; G1: #2465 fixed) · **Target:** Adobe Photoshop 2026
 
 Every known shortfall against Photoshop 2026 (27.11.0), one entry each, ranked by user impact
 on the way to beta. This is the work list agents pick from: take the highest-ranked entry that
@@ -251,10 +251,25 @@ what an agent can't finish alone.
   OpenCore (#1859).
 - **Estimate:** 30–60 h. **Human:** signing certificates.
 
+## Embedded vector editor handoff (2026-10-22)
+
+Extends the external SVG editing slice in PhotoCraft PR #3409 to embedded PDF-compatible AI,
+PDF and EPS in PSD linked-layer tables and Unix desktop launches. A private, bounded VectorCraft
+conversion produces an SVG working copy; only a validated saved edit replaces the source, with
+shared-instance identity, placement, masks and undo preserved. The chooser states the SVG
+conversion limit. Raster/PSB internal editing and browser/automation launch restrictions remain.
+This narrows the smart-object interoperability gap; native AI/EPS format fidelity and clipboard
+reads on non-Windows platforms remain open. Headline estimates and scores are unchanged.
+SVG generic font families resolve to installed fonts when the usual defaults are absent,
+preventing unavailable authored families from silently dropping text. Exact typography still
+requires the authored fonts.
+Implementation and validation details: [vector clipboard](vector-clipboard.md).
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | minor | Embedded AI/PDF/EPS editor handoff and Unix support; SVG font fallback; scores and estimates unchanged. |
 | 2026-10-13 | minor | G4: minimum inputs in Shape Dynamics and Transfer follow their Control (#3825, partial); no readiness percentage or estimate changed |
 | 2026-10-12 | minor | G5: Free Transform options bar H/V skew fields done |
 | 2026-10-12 | minor | G11: `.atn` import maps 112 events (Select and Mask, Spatter, Ripple, Crystallize, Pattern Fill, mask targeting, Step Backward, points, Bitmap) |

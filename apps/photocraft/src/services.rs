@@ -473,7 +473,7 @@ pub fn native(automation: Option<photocraft_automation::AuthorizedWorkspace>) ->
             })
         }),
         clipboard_get_vector: Some(Box::new(crate::vector_clipboard::read)),
-        open_external_svg: if cfg!(windows) { Some(Box::new(crate::external_svg::open)) } else { None },
+        open_external_svg: Some(Box::new(crate::external_svg::open)),
         clipboard_get_image: Some({
             let clip = clip.clone();
             Box::new(move || {

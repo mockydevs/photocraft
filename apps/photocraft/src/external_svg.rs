@@ -4,26 +4,15 @@
 //! watching and removes its temporary directory; it does not terminate the external editor.
 
 use photocraft_ui_egui::{ExternalSvgEditor, ExternalSvgSession};
-use std::sync::Arc;
 
-pub(crate) fn open(editor: ExternalSvgEditor, svg: Arc<Vec<u8>>) -> Result<Box<dyn ExternalSvgSession>, String> {
-    #[cfg(windows)]
-    {
-        native::open(editor, svg)
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = (editor, svg);
-        Err("External SVG editing is currently supported on Windows only".into())
-    }
+pub(crate) fn open(editor: ExternalSvgEditor, source: photocraft_ui_egui::ExternalVectorSource) -> Result<Box<dyn ExternalSvgSession>, String> {
+    native::open(editor, source)
 }
 
-#[cfg(any(windows, test))]
 mod native {
     use super::*;
     use std::fs::{Metadata, OpenOptions};
     use std::io::{Read, Write};
-    #[cfg(windows)]
     use std::path::Path;
     use std::path::PathBuf;
     use std::process::Child;
@@ -33,18 +22,76 @@ mod native {
     use tempfile::TempDir;
 
     const MAX_BYTES: usize = 16 * 1024 * 1024;
-    #[cfg(windows)]
     const POLL_INTERVAL: Duration = Duration::from_millis(200);
-    #[cfg(windows)]
     const SAVE_SETTLE: Duration = Duration::from_millis(600);
 
-    #[cfg(windows)]
-    pub(super) fn open(editor: ExternalSvgEditor, svg: Arc<Vec<u8>>) -> Result<Box<dyn ExternalSvgSession>, String> {
+    pub(super) fn open(editor: ExternalSvgEditor, source: photocraft_ui_egui::ExternalVectorSource) -> Result<Box<dyn ExternalSvgSession>, String> {
         let executable = resolve_editor(editor)?;
-        let owned = OwnedSvg::create(svg.as_slice())?;
-        // Separate executable and argument: neither SVG bytes nor source metadata reach a shell.
-        let child = std::process::Command::new(executable).arg(&owned.file).spawn().map_err(|e| format!("Could not open the external SVG editor: {e}"))?;
-        Ok(Box::new(start(owned, svg.as_ref().clone(), Some(child), POLL_INTERVAL, SAVE_SETTLE)?))
+        if source.bytes.is_empty() || source.bytes.len() > MAX_BYTES || !matches!(source.extension.as_str(), "svg" | "pdf" | "ai" | "eps") {
+            return Err("Unsupported embedded vector source or source exceeds 16 MiB".into());
+        }
+        // Conversion and editor startup run off the UI thread. Dropping this session cancels
+        // conversion; it never kills the interactive editor or changes the parent document.
+        let (stop, stopped) = mpsc::channel();
+        let (send, updates) = mpsc::sync_channel(2);
+        thread::Builder::new()
+            .name("photocraft-vector-editor".into())
+            .spawn(move || {
+                let prepared = super::vector_conversion::prepare(&executable, &source, &stopped);
+                match prepared {
+                    Ok((owned, initial)) => {
+                        if stopped.try_recv().is_ok() {
+                            return;
+                        }
+                        match std::process::Command::new(&executable).arg(&owned.file).spawn() {
+                            Ok(child) => watch(owned, initial, Some(child), stopped, send, POLL_INTERVAL, SAVE_SETTLE),
+                            Err(error) => {
+                                let _ = send.try_send(Err(format!("Could not open the vector editor: {error}")));
+                            }
+                        }
+                    }
+                    Err(error) => {
+                        let _ = send.try_send(Err(error));
+                    }
+                }
+            })
+            .map_err(|e| format!("Cannot start vector editor session: {e}"))?;
+        Ok(Box::new(Session { stop, updates }))
+    }
+
+    #[cfg(unix)]
+    fn resolve_editor(editor: ExternalSvgEditor) -> Result<PathBuf, String> {
+        match editor {
+            ExternalSvgEditor::Program(path) => validate_executable(Path::new(&path)),
+            ExternalSvgEditor::VectorCraft => {
+                let mut candidates = vec![PathBuf::from("/usr/local/bin/vectorcraft"), PathBuf::from("/usr/bin/vectorcraft")];
+                if let Some(home) = std::env::var_os("HOME") {
+                    let home = PathBuf::from(home);
+                    candidates.insert(0, home.join(".local/share/flatpak/app/ai.storyteller.vectorcraft/current/active/files/bin/vectorcraft"));
+                    candidates.push(home.join(".local/bin/vectorcraft"));
+                }
+                candidates
+                    .into_iter()
+                    .find_map(|path| validate_executable(&path).ok())
+                    .ok_or_else(|| "VectorCraft was not found. Choose its executable with Other application".into())
+            }
+            ExternalSvgEditor::Illustrator => Err("Choose a local executable with Other application".into()),
+        }
+    }
+
+    #[cfg(unix)]
+    fn validate_executable(path: &Path) -> Result<PathBuf, String> {
+        use std::os::unix::fs::PermissionsExt;
+        if !path.is_absolute() {
+            return Err("Choose an absolute executable path".into());
+        }
+        let path = path.canonicalize().map_err(|e| format!("Cannot resolve the chosen editor: {e}"))?;
+        let metadata = std::fs::symlink_metadata(&path).map_err(|e| format!("Cannot read the chosen editor: {e}"))?;
+        ensure_regular(&metadata)?;
+        if metadata.permissions().mode() & 0o111 == 0 {
+            return Err("The chosen file is not executable".into());
+        }
+        Ok(path)
     }
 
     #[cfg(windows)]
@@ -100,14 +147,14 @@ mod native {
         path.canonicalize().map_err(|e| format!("Cannot resolve the chosen editor: {e}"))
     }
 
-    struct OwnedSvg {
+    pub(super) struct OwnedSvg {
         directory: TempDir,
-        root: PathBuf,
-        file: PathBuf,
+        pub(super) root: PathBuf,
+        pub(super) file: PathBuf,
     }
 
     impl OwnedSvg {
-        fn create(svg: &[u8]) -> Result<Self, String> {
+        pub(super) fn create(svg: &[u8]) -> Result<Self, String> {
             if svg.is_empty() || svg.len() > MAX_BYTES {
                 return Err("The SVG must contain between 1 byte and 16 MiB".into());
             }
@@ -120,7 +167,7 @@ mod native {
             Ok(Self { directory, root, file })
         }
 
-        fn stamp(&self) -> Result<Stamp, String> {
+        pub(super) fn stamp(&self) -> Result<Stamp, String> {
             let directory_metadata = std::fs::symlink_metadata(&self.root).map_err(|e| format!("Cannot inspect the SVG editing directory: {e}"))?;
             if !directory_metadata.is_dir() || is_redirect(&directory_metadata) || self.directory.path().canonicalize().ok().as_ref() != Some(&self.root) {
                 return Err("The SVG editing directory was replaced or redirected".into());
@@ -130,19 +177,13 @@ mod native {
             Stamp::from_metadata(&metadata)
         }
 
-        fn read(&self, expected: &Stamp) -> Result<Vec<u8>, String> {
+        pub(super) fn read(&self, expected: &Stamp) -> Result<Vec<u8>, String> {
             if &self.stamp()? != expected {
                 return Err("The SVG is still being saved".into());
             }
             let mut options = OpenOptions::new();
             options.read(true);
-            #[cfg(windows)]
-            {
-                use std::os::windows::fs::OpenOptionsExt;
-                // Open the reparse point itself, so replacing the file with a symlink cannot
-                // make this read follow it between the metadata check and opening the handle.
-                options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
-            }
+            no_follow(&mut options);
             let file = options.open(&self.file).map_err(|e| format!("Cannot read the edited SVG: {e}"))?;
             let metadata = file.metadata().map_err(|e| format!("Cannot inspect the edited SVG handle: {e}"))?;
             ensure_regular(&metadata)?;
@@ -161,6 +202,34 @@ mod native {
                 return Err("The SVG is still being saved".into());
             }
             Ok(bytes)
+        }
+        pub(super) fn overwrite(&self, bytes: &[u8]) -> Result<(), String> {
+            if bytes.is_empty() || bytes.len() > MAX_BYTES {
+                return Err("Prepared SVG exceeds the supported byte limit".into());
+            }
+            self.stamp()?;
+            let mut options = OpenOptions::new();
+            options.write(true);
+            no_follow(&mut options);
+            let mut file = options.open(&self.file).map_err(|e| format!("Cannot open the prepared SVG: {e}"))?;
+            ensure_regular(&file.metadata().map_err(|e| format!("Cannot inspect the prepared SVG: {e}"))?)?;
+            file.set_len(0).and_then(|()| file.write_all(bytes)).and_then(|()| file.sync_all()).map_err(|e| format!("Cannot write the prepared SVG: {e}"))
+        }
+    }
+
+    fn no_follow(options: &mut OpenOptions) {
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::OpenOptionsExt;
+            // Open the reparse point itself, so replacing the file with a symlink cannot
+            // make this access follow it between the metadata check and opening the handle.
+            options.custom_flags(0x0020_0000); // FILE_FLAG_OPEN_REPARSE_POINT
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            // Do not follow a replaced symlink or block opening a substituted FIFO/device.
+            options.custom_flags((rustix::fs::OFlags::NOFOLLOW | rustix::fs::OFlags::NONBLOCK).bits() as i32);
         }
     }
 
@@ -187,9 +256,11 @@ mod native {
     }
 
     #[derive(Clone, PartialEq, Eq)]
-    struct Stamp {
+    pub(super) struct Stamp {
         modified: SystemTime,
         length: u64,
+        #[cfg(unix)]
+        identity: (u64, u64),
     }
 
     impl Stamp {
@@ -197,7 +268,14 @@ mod native {
             if metadata.len() == 0 || metadata.len() > MAX_BYTES as u64 {
                 return Err("The edited SVG must contain between 1 byte and 16 MiB".into());
             }
-            Ok(Self { modified: metadata.modified().map_err(|e| format!("Cannot inspect the SVG save time: {e}"))?, length: metadata.len() })
+            #[cfg(unix)]
+            use std::os::unix::fs::MetadataExt;
+            Ok(Self {
+                modified: metadata.modified().map_err(|e| format!("Cannot inspect the SVG save time: {e}"))?,
+                length: metadata.len(),
+                #[cfg(unix)]
+                identity: (metadata.dev(), metadata.ino()),
+            })
         }
     }
 
@@ -220,6 +298,7 @@ mod native {
         }
     }
 
+    #[cfg(test)]
     fn start(owned: OwnedSvg, initial: Vec<u8>, child: Option<Child>, interval: Duration, settle: Duration) -> Result<Session, String> {
         let (stop, stopped) = mpsc::channel();
         // At most two bounded updates await the UI, never an unbounded save queue.
@@ -396,6 +475,48 @@ mod native {
             assert!(OwnedSvg::create(&[]).is_err());
         }
 
+        #[cfg(unix)]
+        #[test]
+        fn atomic_replacement_with_equal_size_and_mtime_is_a_new_save() {
+            let initial = b"<svg>one</svg>".to_vec();
+            let owned = OwnedSvg::create(&initial).unwrap();
+            let file = owned.file.clone();
+            let original_stamp = owned.stamp().unwrap();
+            let modified = std::fs::metadata(&file).unwrap().modified().unwrap();
+            let mut session = start(owned, initial, None, Duration::from_millis(10), Duration::from_millis(40)).unwrap();
+            let replacement = file.with_extension("replacement");
+            let saved = b"<svg>two</svg>";
+            std::fs::write(&replacement, saved).unwrap();
+            std::fs::File::options().write(true).open(&replacement).unwrap().set_modified(modified).unwrap();
+            std::fs::rename(&replacement, &file).unwrap();
+            let replaced_stamp = Stamp::from_metadata(&std::fs::metadata(&file).unwrap()).unwrap();
+            assert_eq!(original_stamp.modified, replaced_stamp.modified);
+            assert_eq!(original_stamp.length, replaced_stamp.length);
+            assert!(original_stamp != replaced_stamp, "file identity must distinguish equal-time atomic saves");
+            expect_saved(&mut session, saved, Instant::now() + Duration::from_secs(3));
+        }
+
+        #[cfg(unix)]
+        #[test]
+        fn unix_saved_file_rejects_symlinks_and_fifos_without_blocking() {
+            let owned = OwnedSvg::create(b"<svg/>").unwrap();
+            let stamp = owned.stamp().unwrap();
+            let target = owned.root.join("private.svg");
+            std::fs::write(&target, b"private contents").unwrap();
+            std::fs::remove_file(&owned.file).unwrap();
+            std::os::unix::fs::symlink(&target, &owned.file).unwrap();
+            assert!(owned.stamp().is_err());
+            assert!(owned.read(&stamp).is_err());
+            assert!(owned.overwrite(b"<svg/>").is_err());
+            std::fs::remove_file(&owned.file).unwrap();
+            rustix::fs::mkfifoat(rustix::fs::CWD, &owned.file, rustix::fs::Mode::RUSR | rustix::fs::Mode::WUSR).unwrap();
+            assert!(owned.stamp().is_err());
+            let began = Instant::now();
+            assert!(owned.read(&stamp).is_err());
+            assert!(began.elapsed() < Duration::from_secs(1));
+            assert_eq!(std::fs::read(&target).unwrap(), b"private contents");
+        }
+
         #[cfg(windows)]
         #[test]
         fn script_and_command_line_are_not_editor_executables() {
@@ -420,3 +541,6 @@ mod native {
         }
     }
 }
+
+#[path = "vector_conversion.rs"]
+mod vector_conversion;

@@ -2839,3 +2839,5 @@ curves	Smooth	Suavizar
 @plural	{n} action|{n} actions	{n} acción|{n} acciones
 	Auto Add/Delete	Añadir/eliminar automáticamente
 	ICO is limited to 256 × 256 pixels	ICO está limitado a 256 × 256 píxeles
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	El contenido AI/PDF/EPS se editará como SVG. Al guardar se reemplaza el origen incrustado; las funciones específicas del formato pueden cambiar.

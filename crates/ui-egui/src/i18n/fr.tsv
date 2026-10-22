@@ -3170,3 +3170,5 @@ curves	Smooth	Lisser
 @plural	{n} action|{n} actions	{n} action|{n} actions
 	Auto Add/Delete	Ajout/suppr. auto
 	ICO is limited to 256 × 256 pixels	Le format ICO est limité à 256 × 256 pixels
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Le contenu AI/PDF/EPS sera modifié au format SVG. L’enregistrement remplace la source incorporée ; les propriétés propres au format peuvent changer.

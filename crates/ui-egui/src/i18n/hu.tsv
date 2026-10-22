@@ -4100,3 +4100,5 @@ cameraRaw	Yellow	Sárga
 	Color Indicates:	A szín jelzése:
 	Ink Characteristics	Festék jellemzői
 	Solidity:	Fedőképesség:
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Az AI/PDF/EPS tartalom SVG-ként szerkeszthető. A mentés lecseréli a beágyazott forrást; a formátumspecifikus tulajdonságok megváltozhatnak.

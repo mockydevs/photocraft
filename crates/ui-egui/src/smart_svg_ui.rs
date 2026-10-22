@@ -1,5 +1,6 @@
 //! Explicit desktop SVG editor selection and bounded, undoable Smart Object save-back.
 
+use base64::Engine as _;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -25,6 +26,8 @@ struct Target {
     contents_id: Value,
     fingerprint: Value,
     svg: Arc<Vec<u8>>,
+    extension: String,
+    size: Option<(f64, f64)>,
 }
 
 struct Pending {
@@ -78,8 +81,12 @@ pub(crate) fn intercept(app: &mut PhotocraftApp, id: &str, params: &Value) -> Op
         None => st.active_layer?,
     };
     let LayerContent::Smart(smart) = &st.doc.layer(layer)?.content else { return None };
-    let SmartSource::Embedded { bytes, .. } = &smart.source else { return None };
-    if !photocraft_io::svg::is_svg(bytes) {
+    let bytes = match &smart.source {
+        SmartSource::Embedded { bytes, .. } => bytes.as_slice(),
+        SmartSource::Linked { path } => photocraft_io::linked::embedded_payload(&st.doc.metadata, path)?.1,
+    };
+    if !(photocraft_io::svg::is_svg(bytes) || bytes.starts_with(b"%PDF-") || bytes.starts_with(b"%!PS-Adobe-") || bytes.starts_with(&[0xc5, 0xd0, 0xd3, 0xc6]))
+    {
         return None;
     }
     let doc = st.doc.id;
@@ -91,14 +98,28 @@ pub(crate) fn intercept(app: &mut PhotocraftApp, id: &str, params: &Value) -> Op
             return Err("Finish the current edit or dialog before editing this SVG Smart Object".into());
         }
         let exported = app.run("layer.smartObjects.exportSvg", json!({"layer": layer.0}))?;
-        let svg = exported.get("svg").and_then(Value::as_str).ok_or("The Smart Object did not export SVG")?.as_bytes().to_vec();
+        let extension = exported.get("extension").and_then(Value::as_str).unwrap_or("svg").to_string();
+        let svg = if let Some(svg) = exported.get("svg").and_then(Value::as_str) {
+            svg.as_bytes().to_vec()
+        } else {
+            let encoded = exported.get("sourceBase64").and_then(Value::as_str).ok_or("The Smart Object did not export a vector")?;
+            if encoded.len() > MAX_SVG_BYTES.div_ceil(3) * 4 {
+                return Err("The vector exceeds the 16 MiB editor limit".into());
+            }
+            base64::engine::general_purpose::STANDARD.decode(encoded).map_err(|_| "Invalid vector source encoding")?
+        };
+        let size: Option<(f64, f64)> =
+            serde_json::from_value(exported.get("sourceSize").cloned().unwrap_or(Value::Null)).map_err(|_| "Invalid vector source size")?;
         if svg.len() > MAX_SVG_BYTES {
             return Err("The SVG exceeds the 16 MiB editor limit".into());
         }
         let fingerprint = exported.get("fingerprint").filter(|v| !v.is_null()).cloned().ok_or("The SVG fingerprint is missing")?;
         let contents_id = exported.get("contentsId").filter(|v| !v.is_null()).cloned().ok_or("The Smart Object identity is missing")?;
-        app.smart_svg.pending =
-            Some(Pending { target: Target { doc, layer, contents_id, fingerprint, svg: Arc::new(svg) }, editor: Editor::VectorCraft, program: None });
+        app.smart_svg.pending = Some(Pending {
+            target: Target { doc, layer, contents_id, fingerprint, svg: Arc::new(svg), extension, size },
+            editor: Editor::VectorCraft,
+            program: None,
+        });
         Ok(json!({"deferred": true}))
     })();
     if let Err(error) = &result {
@@ -159,7 +180,10 @@ fn confirm(app: &mut PhotocraftApp) -> Result<Value, String> {
         Editor::Internal => return Err("Invalid SVG editor choice".into()),
     };
     let open = app.services.open_external_svg.as_mut().ok_or("External SVG editing is unavailable")?;
-    let session = open(editor, pending.target.svg.clone())?;
+    let session = open(
+        editor,
+        crate::ExternalVectorSource { bytes: pending.target.svg.clone(), extension: pending.target.extension.clone(), size: pending.target.size },
+    )?;
     if let Some(index) = existing {
         app.smart_svg.editing.remove(index);
     }
@@ -177,7 +201,11 @@ fn choose_program(app: &mut PhotocraftApp) -> Result<Value, String> {
     let layer = pending.target.layer;
     let contents_id = pending.target.contents_id.clone();
     app.ask_file(
-        crate::file_dialog::FileDialogRequest::Open { multiple: false, initial_dir: None, extensions: Some(vec!["exe".into()]) },
+        crate::file_dialog::FileDialogRequest::Open {
+            multiple: false,
+            initial_dir: None,
+            extensions: if cfg!(windows) { Some(vec!["exe".into()]) } else { None },
+        },
         move |app, answer| {
             let crate::file_dialog::FileDialogAnswer::Paths(paths) = answer else { return Err("Choose a local editor executable".into()) };
             if paths.len() != 1 {
@@ -217,6 +245,9 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
         crate::widgets::hairline(ui);
         ui.add_space(8.0);
         ui.label(tr("Choose the application used to edit this SVG:"));
+        if pending.target.extension != "svg" {
+            ui.label(tr("AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change."));
+        }
         ui.label(egui::RichText::new(tr("Clipboard SVG does not reliably identify its source application.")).small().color(tokens.text_dim));
         for (choice, label) in [
             (Editor::VectorCraft, "VectorCraft"),
@@ -224,7 +255,11 @@ pub(crate) fn show(app: &mut PhotocraftApp, ctx: &egui::Context) {
             (Editor::Program, "Other application"),
             (Editor::Internal, "PhotoCraft (internal editor)"),
         ] {
-            ui.radio_value(&mut pending.editor, choice, tr(label));
+            if choice == Editor::Illustrator && !cfg!(windows) {
+                continue;
+            }
+            let available = pending.target.extension == "svg" || matches!(choice, Editor::VectorCraft | Editor::Program);
+            ui.add_enabled_ui(available, |ui| ui.radio_value(&mut pending.editor, choice, tr(label)));
         }
         if pending.editor == Editor::Program {
             if let Some(program) = &pending.program {
@@ -340,7 +375,7 @@ pub(crate) fn poll(app: &mut PhotocraftApp, ctx: &egui::Context) {
             .iter()
             .find(|st| st.doc.id == edit.target.doc)
             .and_then(|st| st.doc.layer(edit.target.layer))
-            .is_some_and(|layer| matches!(&layer.content, LayerContent::Smart(smart) if json!(smart.contents_id.0) == edit.target.contents_id && matches!(&smart.source, SmartSource::Embedded { bytes, .. } if photocraft_io::svg::is_svg(bytes))));
+            .is_some_and(|layer| matches!(&layer.content, LayerContent::Smart(smart) if json!(smart.contents_id.0) == edit.target.contents_id));
         if !exists {
             continue;
         }

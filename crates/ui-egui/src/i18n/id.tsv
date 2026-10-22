@@ -3157,3 +3157,5 @@ curves	Smooth	Haluskan
 @plural	{n} action|{n} actions	{n} tindakan
 	Auto Add/Delete	Tambah/Hapus Otomatis
 	ICO is limited to 256 × 256 pixels	ICO dibatasi hingga 256 × 256 piksel
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Konten AI/PDF/EPS akan diedit sebagai SVG. Menyimpan akan mengganti sumber tersemat; fitur khusus format mungkin berubah.

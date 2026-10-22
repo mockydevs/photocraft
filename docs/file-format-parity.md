@@ -1,6 +1,6 @@
 # File-format parity
 
-> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-12 · **Change:** minor (CMYK Invert, Posterize and Threshold on the inks; 16-bit Lab Invert; Photoshop-oracle floor 145/258; `.atn` import maps 112 events; DDS textures open, #1327; DPX read and write, #1049; #2465 fixed: CS2 placed layers with only a `PlLd` block open their contents; Photoshop Actions `.atn` read and write; `.shc` contour files read and write; earlier the same day: indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
+> **Last reviewed:** 2026-10-12 · **Last updated:** 2026-10-22 · **Change:** minor (embedded AI/PDF/EPS SVG working-copy editing; CMYK Invert, Posterize and Threshold on the inks; 16-bit Lab Invert; Photoshop-oracle floor 145/258; `.atn` import maps 112 events; DDS textures open, #1327; DPX read and write, #1049; #2465 fixed: CS2 placed layers with only a `PlLd` block open their contents; Photoshop Actions `.atn` read and write; `.shc` contour files read and write; earlier the same day: indexed BMP palette mode; Save keeps a JPEG's quality and a WebP's encoding) · **Target:** Adobe Photoshop 2026
 
 Every format Photoshop 2026 (27.11.0) reads or writes, with PhotoCraft's support, fidelity and
 tests. Photoshop's list comes from its `Info.plist` `CFBundleDocumentTypes`, the PiPL read/write
@@ -138,10 +138,25 @@ remaining gaps in #1606 stay tracked with per-sample corpus ceilings.
 | Curves `.acv`, Levels `.alv`, other adjustment presets | R/W | not audited | |
 | C2PA Content Credentials | R/W | no | #1050 |
 
+## Embedded vector editor handoff (2026-10-22)
+
+Extends the external SVG editing slice in PhotoCraft PR #3409 to embedded PDF-compatible AI,
+PDF and EPS in PSD linked-layer tables and Unix desktop launches. A private, bounded VectorCraft
+conversion produces an SVG working copy; only a validated saved edit replaces the source, with
+shared-instance identity, placement, masks and undo preserved. The chooser states the SVG
+conversion limit. Raster/PSB internal editing and browser/automation launch restrictions remain.
+This narrows the smart-object interoperability gap; native AI/EPS format fidelity and clipboard
+reads on non-Windows platforms remain open. Headline estimates and scores are unchanged.
+SVG generic font families resolve to installed fonts when the usual defaults are absent,
+preventing unavailable authored families from silently dropping text. Exact typography still
+requires the authored fonts.
+Implementation and validation details: [vector clipboard](vector-clipboard.md).
+
 ## Revision history
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-10-22 | minor | Embedded AI/PDF/EPS editor handoff and Unix support; SVG font fallback; scores and estimates unchanged. |
 | 2026-10-12 | minor | `.atn`: 112 events mapped (Select and Mask, Filter Gallery Spatter, Ripple, Crystallize, Pattern Fill layers, mask targeting, Step Backward, points, Bitmap) |
 | 2026-10-12 | minor | DDS textures open, read-only (#1327) |
 | 2026-10-12 | minor | #2465 fixed: Photoshop CS2 placed layers (`PlLd` only, file in `lnkD`) open as editable smart objects and save their edits |

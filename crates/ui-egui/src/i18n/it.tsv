@@ -4117,3 +4117,5 @@ navigator	Zoom	Zoom
 @plural	{n} action|{n} actions	{n} azione|{n} azioni
 	Auto Add/Delete	Aggiungi/elimina automaticamente
 	ICO is limited to 256 × 256 pixels	ICO è limitato a 256 × 256 pixel
+
+smartSvg	AI/PDF/EPS contents will be edited as SVG. Saving replaces the embedded source; format-specific features may change.	Il contenuto AI/PDF/EPS verrà modificato come SVG. Il salvataggio sostituisce la sorgente incorporata; le caratteristiche specifiche del formato potrebbero cambiare.
