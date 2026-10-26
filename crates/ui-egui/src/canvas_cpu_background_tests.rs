@@ -67,6 +67,9 @@ type Harness = egui_kittest::Harness<'static, PhotocraftApp>;
 /// The CPU-canvas fixture on the offscreen software adapter, or `None` when this machine has no
 /// graphics adapter. Only creating the renderer may be skipped: a failing fixture command or a
 /// panic in the first frames must fail the test, not pass it as "no adapter".
+///
+/// Callers hold [`photocraft_testkit::gpu_lock`] for the whole test, like every other GPU harness:
+/// building wgpu devices on parallel test threads segfaults on some drivers (testkit `gpu.rs`).
 fn harness(size: [u32; 2], background: &str) -> Option<Harness> {
     let mut app = PhotocraftApp::new(photocraft_engine::Session::new(), Default::default());
     // app.gpu remains None: compose on the CPU, use the harness's software window adapter.
@@ -119,6 +122,7 @@ fn fixture_failures_are_not_skipped_as_a_missing_adapter() {
 
 #[test]
 fn omitting_an_occluded_checker_preserves_cpu_canvas_pixels() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness([320, 240], "white") else {
         eprintln!("skipping: no offscreen graphics adapter");
         return;
@@ -159,6 +163,7 @@ fn omitting_an_occluded_checker_preserves_cpu_canvas_pixels() {
 
 #[test]
 fn pattern_preview_keeps_the_legacy_checker_for_every_copy() {
+    let _gpu = photocraft_testkit::gpu_lock();
     let Some(mut h) = harness([320, 240], "white") else {
         eprintln!("skipping: no offscreen graphics adapter");
         return;
@@ -199,6 +204,7 @@ fn pattern_preview_keeps_the_legacy_checker_for_every_copy() {
 #[ignore = "manual release benchmark: 24 MP CPU canvas on the offscreen software adapter"]
 fn cpu_canvas_background_benchmark() {
     use std::time::Instant;
+    let _gpu = photocraft_testkit::gpu_lock();
     let mut results = Vec::new();
     let output = std::env::var_os("PHOTOCRAFT_CPU_BENCH_OUTPUT").map(std::path::PathBuf::from);
     for background in ["white", "transparent"] {
