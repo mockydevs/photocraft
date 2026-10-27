@@ -326,8 +326,10 @@ fn a_split_measurement_sums_every_command_buffer() {
     }
     eprintln!("{BATCHES} batches: one command buffer {one:.2} ms, split over {BATCHES} {sum:.2} ms");
     assert!(one > 0.0, "the copies took measurable GPU time");
-    // Equal batches: the sum is the whole work, any single span a quarter of it.
-    assert!(sum >= one * 0.75, "split over {BATCHES} command buffers measured {sum:.2} ms against {one:.2} ms in one: not every span is summed");
+    // Equal batches: losing one of four spans reports about 75% of the work even when the
+    // span count is still four. Keep the lower bound above that failure, with 15% room for
+    // clock variation between the interleaved single-buffer and split measurements.
+    assert!(sum >= one * 0.85, "split over {BATCHES} command buffers measured {sum:.2} ms against {one:.2} ms in one: not every span is summed");
     assert!(sum <= one * 1.5, "split over {BATCHES} command buffers measured {sum:.2} ms against {one:.2} ms in one: spans counted twice?");
 }
 
