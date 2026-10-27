@@ -115,6 +115,9 @@ fn measure_with_stats(device: &wgpu::Device, queue: &wgpu::Queue, comp: &mut Com
     (submit_ms, wall_ms, timing, stats)
 }
 
+/// The reported GPU time of a GPU-bound 6 MP refresh is its execution, not its encode-and-submit:
+/// several times the submit time, within the waited-for wall clock and most of it, and scaling
+/// with the pixels refreshed (a quarter of the canvas costs well under the whole).
 #[test]
 fn gpu_time_tracks_execution_not_submission() {
     let _lock = crate::GPU_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -185,6 +188,10 @@ fn an_unmeasured_compositor_reports_nothing() {
     assert_eq!(comp.take_gpu_timing(), None, "no measurement is reported rather than a wrong one");
 }
 
+/// A refresh that flushes several command buffers under a tight memory budget reports one
+/// measurement with a span per command buffer. Its summed time stays within the waited-for wall
+/// clock and reaches at least 60% of the same composite's time in a single command buffer, which
+/// timing only the last command buffer would miss.
 #[test]
 fn a_refresh_that_submits_several_times_is_one_measurement() {
     let _lock = crate::GPU_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -205,15 +212,22 @@ fn a_refresh_that_submits_several_times_is_one_measurement() {
 
     let _ = measure(&device, &queue, &mut whole, &doc, full);
     let _ = measure(&device, &queue, &mut batched, &doc, full);
-    // Interleaved, best of five each: GPU clocks ramp and settle between refreshes, and the
-    // fastest run of each is the one at full clock, so the two are compared like for like.
+    // Interleaved, best of six each: GPU clocks ramp and settle between refreshes, and the
+    // fastest run of each is the one at full clock, so the two are compared like for like. The
+    // order alternates by sample, so neither side always runs on clocks and caches the other has
+    // just warmed; an even count gives each order three samples.
     let (mut one, mut sum) = (f64::INFINITY, None::<(GpuTiming, f64, f64)>);
-    for _ in 0..5 {
-        if let (_, _, Some(t)) = measure(&device, &queue, &mut whole, &doc, full) {
-            assert_eq!(t.spans, 1, "a resident refresh of this size submits once");
-            one = one.min(t.ms);
-        }
+    for sample in 0..6 {
+        let resident_first = sample % 2 == 0;
+        let mut resident = if resident_first { measure(&device, &queue, &mut whole, &doc, full).2 } else { None };
         let (submit_ms, wall_ms, timing, stats) = measure_with_stats(&device, &queue, &mut batched, &doc, full);
+        if !resident_first {
+            resident = measure(&device, &queue, &mut whole, &doc, full).2;
+        }
+        if let Some(r) = &resident {
+            assert_eq!(r.spans, 1, "a resident refresh of this size submits once");
+            one = one.min(r.ms);
+        }
         let t = timing.expect("a batched refresh is measured like any other");
         assert_eq!(t.px, area(full));
         // Structure: every command buffer the refresh submitted is one span of the measurement.
@@ -222,7 +236,9 @@ fn a_refresh_that_submits_several_times_is_one_measurement() {
         // wall clock.
         assert!(t.ms <= wall_ms * 1.25, "summed gpu time {:.1} ms exceeds the whole waited-for refresh {wall_ms:.1} ms", t.ms);
         eprintln!(
-            "batched: {} command buffers, gpu {:.2} ms, submit {submit_ms:.1} ms, waited wall {wall_ms:.1} ms, {} MB uploaded",
+            "sample {sample} ({} first): resident {}; batched {} command buffers, gpu {:.3} ms, submit {submit_ms:.1} ms, waited wall {wall_ms:.1} ms, {} MB uploaded",
+            if resident_first { "resident" } else { "batched" },
+            resident.as_ref().map_or("not reported".to_owned(), |r| format!("gpu {:.3} ms", r.ms)),
             t.spans,
             t.ms,
             stats.bytes_uploaded >> 20
@@ -231,7 +247,7 @@ fn a_refresh_that_submits_several_times_is_one_measurement() {
             sum = Some((t, submit_ms, wall_ms));
         }
     }
-    let (t, submit_ms, wall_ms) = sum.expect("five batched refreshes were measured");
+    let (t, submit_ms, wall_ms) = sum.expect("six batched refreshes were measured");
     assert!(one.is_finite(), "the resident refresh reports a GPU time");
     eprintln!("best: batched {:.2} ms in {} command buffers, resident {one:.2} ms in one", t.ms, t.spans);
     if t.spans < 2 {
@@ -317,11 +333,27 @@ fn a_split_measurement_sums_every_command_buffer() {
     };
 
     let _ = one_buffer(&mut timer);
+    let _ = split(&mut timer);
+    // Interleaved, best of six each, alternating which runs first by sample: neither side always
+    // runs on clocks and caches the other has just warmed, and each order gets three samples.
     let (mut one, mut sum) = (f64::INFINITY, f64::INFINITY);
-    for _ in 0..5 {
-        one = one.min(one_buffer(&mut timer).ms);
-        let t = split(&mut timer);
+    for sample in 0..6 {
+        let one_first = sample % 2 == 0;
+        let (one_ms, t) = if one_first {
+            let one_ms = one_buffer(&mut timer).ms;
+            (one_ms, split(&mut timer))
+        } else {
+            let t = split(&mut timer);
+            (one_buffer(&mut timer).ms, t)
+        };
+        eprintln!(
+            "sample {sample} ({} first): one command buffer {one_ms:.3} ms, split over {} {:.3} ms",
+            if one_first { "one buffer" } else { "split" },
+            t.spans,
+            t.ms
+        );
         assert_eq!(t.spans as usize, BATCHES, "every command buffer is one span");
+        one = one.min(one_ms);
         sum = sum.min(t.ms);
     }
     eprintln!("{BATCHES} batches: one command buffer {one:.2} ms, split over {BATCHES} {sum:.2} ms");
