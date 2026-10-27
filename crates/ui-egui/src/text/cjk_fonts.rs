@@ -979,6 +979,10 @@ pub fn install(ctx: &egui::Context) {
     install_with(ctx, Sources::system());
 }
 
+/// [`install`] with injected [`Sources`]: (re)installs the lazy fallback loader plugin, resetting
+/// one already present, and, when `sources.eager_craft_fonts` is set, the per-character provider
+/// that serves craft faces (if the build has them) and system faces in the first frame. Tests use
+/// it to pin locale, files and coverage without depending on the machine's fonts.
 pub fn install_with(ctx: &egui::Context, sources: Sources) {
     // egui keeps the first plugin of a type. set_fonts removes loaded fallbacks, so reset the
     // existing loader too; otherwise its tried/loaded sets prevent fonts being added again.
