@@ -219,7 +219,7 @@ jobs:
 
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
-          tool: cargo-nextest@0.9.149
+          tool: cargo-nextest@0.9.150
 
       # The unit leg runs `--lib --bins` and the integration leg `--test '*'` (every
       # integration-test target); the feature selection stays the same, so both legs share the
@@ -276,7 +276,7 @@ jobs:
 
       - uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         with:
-          tool: cargo-nextest@0.9.149
+          tool: cargo-nextest@0.9.150
 
       - name: Test without heif
         run: cargo nextest run -p photocraft-heif -p photocraft-codecs -p photocraft-io --locked --profile ci
