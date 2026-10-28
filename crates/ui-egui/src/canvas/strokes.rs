@@ -2,7 +2,7 @@ use super::display::{canvas_display, display_image};
 use super::drag::Drag;
 use super::textures::{canvas_texture_options, shown_as_document};
 use super::view_xform::ViewXform;
-use super::*;
+use super::{Color32, DRect, PhotocraftApp, Pos2, Stroke, Tool, json, pos2};
 
 pub(crate) struct ClonePreviewCache {
     pub(super) key: String,
@@ -406,7 +406,7 @@ pub(super) fn feed_live_stroke(app: &mut PhotocraftApp) {
             }
         }
     }
-    app.stroke_trace.stroke(crate::gpu_canvas::now_ms() - started);
+    app.perf.stage.stroke_ms += crate::gpu_canvas::now_ms() - started;
 }
 
 /// The points the live retouching stroke has rendered.
@@ -603,7 +603,7 @@ pub(super) fn commit_brush_stroke(app: &mut PhotocraftApp, d: &Drag) {
     }
     let started = crate::gpu_canvas::now_ms();
     let result = app.run(stroke_command(app, d.tool), p);
-    app.stroke_trace.stroke(crate::gpu_canvas::now_ms() - started);
+    app.perf.stage.stroke_ms += crate::gpu_canvas::now_ms() - started;
     app.session.clear_live_stroke();
     let Ok(r) = result else { return };
     let after = app.session.documents().iter().find(|st| st.doc.id == doc).map(|st| (st.revision, st.doc.clone()));
